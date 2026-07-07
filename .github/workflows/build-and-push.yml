@@ -1,0 +1,79 @@
+# based on https://docs.github.com/en/actions/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
+name: Create and publish an ERPNext Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      erpnext_version:
+        description: ERPNext version to build
+        required: true
+        type: string
+      frappe_oidc_extended_version:
+        description: frappe-oidc-extended version to install
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  BASE_IMAGE: frappe/erpnext
+  OIDC_EXTENDED_REPOSITORY: MohammedNoureldin/frappe-oidc-extended
+
+jobs:
+  check-versions-valid:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check ERPNext version is valid
+        run: docker manifest inspect "${BASE_IMAGE}:${ERPNEXT_VERSION}"
+        env:
+          ERPNEXT_VERSION: ${{ inputs.erpnext_version }}
+      - name: Check frappe-oidc-extended version is valid
+        run: git ls-remote --exit-code --heads --tags "https://github.com/${OIDC_EXTENDED_REPOSITORY}.git" "${OIDC_EXTENDED_VERSION}"
+        env:
+          OIDC_EXTENDED_VERSION: ${{ inputs.frappe_oidc_extended_version }}
+
+  build-and-push:
+    needs: [
+      check-versions-valid,
+    ]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Repo checkout
+        uses: actions/checkout@v4
+      - name: Container registry login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: erpnext-${{ inputs.erpnext_version }}-oidc-${{ inputs.frappe_oidc_extended_version }}
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}:${{ inputs.erpnext_version }}
+            FRAPPE_OIDC_EXTENDED_VERSION=${{ inputs.frappe_oidc_extended_version }}
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
