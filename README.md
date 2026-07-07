@@ -2,7 +2,9 @@
 
 Extended ERPNext Docker image for project-specific additions.
 
-The image currently builds from the upstream `frappe/erpnext` image and includes [`frappe-oidc-extended`](https://github.com/MohammedNoureldin/frappe-oidc-extended).
+## Extensions
+
+- [`frappe-oidc-extended`](https://github.com/MohammedNoureldin/frappe-oidc-extended)
 
 ## Image
 
